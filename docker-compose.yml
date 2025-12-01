@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  bot:
+    image: dipusharma1122/leakosint_telegram_bot:latest
+    container_name: leakosint_bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - LEAKOSINT_API_TOKEN=${LEAKOSINT_API_TOKEN}
+      - LEAKOSINT_API_URL=${LEAKOSINT_API_URL:-https://leakosintapi.com/}
+    env_file:
+      - .env
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

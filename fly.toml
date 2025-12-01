@@ -1,0 +1,27 @@
+# fly.toml - Fly.io deployment configuration
+
+app = "leakosint-telegram-bot"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  LEAKOSINT_API_URL = "https://leakosintapi.com/"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+[deploy]
+  strategy = "immediate"
+
+# Set secrets with: fly secrets set TELEGRAM_BOT_TOKEN=xxx LEAKOSINT_API_TOKEN=xxx

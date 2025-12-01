@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: leakosint-telegram-bot
+    env: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: LEAKOSINT_API_TOKEN
+        sync: false
+      - key: LEAKOSINT_API_URL
+        value: https://leakosintapi.com/
+    # Free tier - bot will sleep after 15 mins of inactivity
+    # Upgrade to paid plan for 24/7 uptime
