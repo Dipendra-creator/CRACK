@@ -22,7 +22,7 @@ jobs:
         uses: docker/login-action@v2
         with:
           username: dipusharma1122
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: dckr_pat_10pA6bPrAh3A2DpYiNcLBkB78b4
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
