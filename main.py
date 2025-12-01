@@ -703,11 +703,227 @@ For legitimate use only
         bot.answer_callback_query(call.id, "Page indicator")
 
 
+```python
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call: CallbackQuery):
+    """Handle inline keyboard callbacks"""
+    global cached_reports
+    
+    # Handle help menu callbacks
+    if call.data == "help_main":
+        help_text = """
+📖 <b>Leakosint Bot - Quick Guide</b>
+
+<b>🔍 How to Search:</b>
+Simply send me:
+• Email: user@example.com
+• Username: john_doe
+• Phone: +1234567890
+• Name: John Smith
+
+<b>📋 Commands:</b>
+/start - Welcome menu
+/help - Full help guide
+/stats - Bot statistics
+/examples - Search examples
+/about - About this bot
+/privacy - Privacy info
+
+<i>Just type your query and send!</i>
+"""
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=help_text,
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id)
+        
+    elif call.data == "help_examples":
+        examples_text = """
+💡 <b>Search Examples</b>
+
+<b>📧 Email:</b>
+<code>john@gmail.com</code>
+
+<b>👤 Username:</b>
+<code>john_doe</code>
+
+<b>📱 Phone:</b>
+<code>+1234567890</code>
+
+<b>🏷️ Name:</b>
+<code>John Smith</code>
+
+<i>Copy and send any example!</i>
+"""
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=examples_text,
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id)
+        
+    elif call.data == "help_stats":
+        stats_text = f"""
+📊 <b>Bot Statistics</b>
+
+🌐 API: <code>{LEAKOSINT_API_URL}</code>
+🔢 Limit: <b>{DEFAULT_LIMIT}</b> records
+🌍 Language: <b>{DEFAULT_LANG.upper()}</b>
+💾 Cached: <b>{len(cached_reports)}</b>
+✅ Status: <b>Online</b>
+
+<i>Ready to search!</i>
+"""
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=stats_text,
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id)
+        
+    elif call.data == "help_privacy":
+        privacy_text = """
+🔒 <b>Privacy & Security</b>
+
+<b>We collect:</b>
+• Search queries (temp)
+• User ID (if auth enabled)
+
+<b>We DON'T collect:</b>
+❌ Personal data
+❌ Conversations
+❌ Location
+
+<b>Security:</b>
+🔐 Encrypted API calls
+🔐 No third-party sharing
+🔐 Temporary cache only
+
+<i>Your privacy is protected.</i>
+"""
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=privacy_text,
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id)
+        
+    elif call.data == "help_about":
+        about_text = """
+ℹ️ <b>About Leakosint Bot</b>
+
+<b>🤖 Purpose:</b>
+OSINT tool for searching leaked databases
+
+<b>🎯 Use Cases:</b>
+• Security research
+• Data breach checking
+• OSINT investigations
+• Educational purposes
+
+<b>🔧 Features:</b>
+✅ Multi-database search
+✅ Fast results
+✅ Easy navigation
+✅ Detailed info
+
+<b>⚖️ Legal:</b>
+For legitimate use only
+
+<i>Powered by Leakosint API</i>
+"""
+        bot.edit_message_text(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            text=about_text,
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id)
+    
+    elif call.data.startswith("/page "):
+        # Parse callback data
+        parts = call.data.split(" ")
+        if len(parts) != 3:
+            return
+        
+        query_id = parts[1]
+        page_id = int(parts[2])
+        
+        # Check if report exists
+        if query_id not in cached_reports:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text="⚠️ This search has expired. Please perform a new search."
+            )
+            return
+        
+        # Get report pages
+        report_pages = cached_reports[query_id]
+        
+        # Handle page wrapping
+        if page_id < 0:
+            page_id = len(report_pages) - 1
+        elif page_id >= len(report_pages):
+            page_id = page_id % len(report_pages)
+        
+        # Create navigation
+        markup = create_navigation_keyboard(query_id, page_id, len(report_pages))
+        
+        # Update message
+        try:
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=report_pages[page_id],
+                parse_mode="HTML",
+                reply_markup=markup
+            )
+        except telebot.apihelper.ApiTelegramException as e:
+            # Fallback: send without HTML formatting
+            logger.warning(f"HTML parse error on navigation: {e}")
+            bot.edit_message_text(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                text=report_pages[page_id].replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", ""),
+                reply_markup=markup
+            )
+    
+    elif call.data == "page_info":
+        # Just answer the callback to remove loading state
+        bot.answer_callback_query(call.id, "Page indicator")
+
+
 def main():
     """Main function to run the bot"""
     logger.info("Starting Leakosint Telegram Bot...")
     logger.info(f"Bot configured with API token: {LEAKOSINT_API_TOKEN[:10]}...")
     
+    # Start keep-alive server for Render
+    import os
+    from threading import Thread
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'Bot is running!')
+
+    def start_server():
+        port = int(os.environ.get("PORT", 8080))
+        server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+        logger.info(f"Starting keep-alive server on port {port}")
+        server.serve_forever()
+
+    # Run server in a separate thread
+    Thread(target=start_server, daemon=True).start()
+
     # Start polling
     while True:
         try:
@@ -721,3 +937,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
