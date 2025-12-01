@@ -67,7 +67,7 @@ version: '3.8'
 services:
   leakosint-bot:
     build: .
-    container_name: leakosint-telegram-bot
+    container_name: leakosint_telegram_bot
     restart: unless-stopped
     env_file:
       - .env

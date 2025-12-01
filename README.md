@@ -27,11 +27,11 @@ Run with Docker
 
 Build:
 
-docker build -t leakosint-telegram-bot:latest .
+docker build -t leakosint_telegram_bot:latest .
 
 Run:
 
-docker run --env-file .env --restart unless-stopped leakosint-telegram-bot:latest
+docker run --env-file .env --restart unless-stopped leakosint_telegram_bot:latest
 
 GitHub deployment (what CI will do)
 
@@ -48,7 +48,7 @@ git init
 git add .
 git commit -m "Initial commit — sanitize secrets and add CI"
 git branch -M main
-git remote add origin https://github.com/<your-username>/leakosint-telegram-bot.git
+git remote add origin https://github.com/<your-username>/leakosint_telegram_bot.git
 git push -u origin main
 
 Security & Notes
