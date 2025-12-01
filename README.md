@@ -11,8 +11,6 @@ Contents
 - [`Dockerfile`](Dockerfile:1)
 - [`.env.example`](.env.example:1)
 
-Prerequisites
-
 - Python 3.11+
 - Docker (optional)
 
