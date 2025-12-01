@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 LEAKOSINT_API_URL = os.getenv("LEAKOSINT_API_URL", "https://leakosintapi.com/")
 LEAKOSINT_API_TOKEN = os.getenv("LEAKOSINT_API_TOKEN", "")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7913352171:AAHse9ryBANoA6t49nwW0mdG7FoEbdJ1ljg")
 
 # Settings
 DEFAULT_LANG = "en"
@@ -39,10 +39,38 @@ def is_user_authorized(user_id):
     return user_id in AUTHORIZED_USERS
 
 
+def format_value(value, indent=0):
+    """
+    Recursively format any value (dict, list, primitive) into readable text
+    """
+    indent_str = "  " * indent
+    lines = []
+    
+    if isinstance(value, dict):
+        for key, val in value.items():
+            if isinstance(val, (dict, list)):
+                lines.append(f"{indent_str}• <b>{key}</b>:")
+                lines.extend(format_value(val, indent + 1))
+            else:
+                lines.append(f"{indent_str}• <b>{key}</b>: {val}")
+    elif isinstance(value, list):
+        for idx, item in enumerate(value, 1):
+            if isinstance(item, dict):
+                lines.append(f"{indent_str}<b>[{idx}]</b>")
+                lines.extend(format_value(item, indent + 1))
+            else:
+                lines.append(f"{indent_str}• {item}")
+    else:
+        lines.append(f"{indent_str}{value}")
+    
+    return lines
+
+
 def generate_report(query, query_id):
     """
     Generate a report from the Leakosint API
     Returns a list of formatted report pages or None on error
+    Handles any API response structure generically
     """
     global cached_reports
     
@@ -56,37 +84,93 @@ def generate_report(query, query_id):
     try:
         logger.info(f"Searching for: {query}")
         response = requests.post(LEAKOSINT_API_URL, json=data, timeout=30)
-        response.raise_for_status()
-        json_response = response.json()
+        
+        try:
+            json_response = response.json()
+        except json.JSONDecodeError:
+            logger.error("Failed to decode JSON response")
+            logger.error(f"Raw response: {response.text[:500]}")
+            return None
         
         logger.info(f"API Response: {json_response}")
         
-        # Check for errors
+        # Check for API errors (including 502 backend errors)
+        if "error" in json_response:
+            error_code = json_response.get("error")
+            logger.error(f"API Error: {error_code}")
+            return None
+        
         if "Error code" in json_response:
-            logger.error(f"API Error: {json_response['Error code']}")
+            logger.error(f"API Error Code: {json_response['Error code']}")
             return None
         
         # Process results
         cached_reports[str(query_id)] = []
         
+        # Extract metadata fields (non-List fields)
+        metadata_lines = []
+        metadata_fields = ["NumOfDatabase", "NumOfResults", "free_requests_left", "price", "search time"]
+        
+        for field in metadata_fields:
+            if field in json_response:
+                metadata_lines.append(f"<b>{field}</b>: {json_response[field]}")
+        
+        # Check if List exists
         if "List" not in json_response:
             logger.warning("No 'List' in response")
+            # Still show metadata if available
+            if metadata_lines:
+                text = "📊 <b>Search Results</b>\n\n" + "\n".join(metadata_lines) + "\n\n❌ No data found in response."
+                cached_reports[str(query_id)].append(text)
+                return cached_reports[str(query_id)]
             return None
         
+        # Process each database in the List
         for database_name, database_data in json_response["List"].items():
             text_lines = [f"<b>📊 {database_name}</b>", ""]
             
-            # Add leak info if available
-            if "InfoLeak" in database_data:
-                text_lines.append(f"ℹ️ {database_data['InfoLeak']}\n")
+            # Add metadata at the top of first page
+            if len(cached_reports[str(query_id)]) == 0 and metadata_lines:
+                text_lines.extend(metadata_lines)
+                text_lines.append("")
             
-            # Add data entries
-            if database_name != "No results found" and "Data" in database_data:
-                for idx, record in enumerate(database_data["Data"], 1):
-                    text_lines.append(f"<b>Record #{idx}</b>")
-                    for column_name, column_value in record.items():
-                        text_lines.append(f"  • <b>{column_name}</b>: {column_value}")
-                    text_lines.append("")
+            # Handle database_data generically
+            if isinstance(database_data, dict):
+                # Special handling for common fields
+                if "InfoLeak" in database_data:
+                    text_lines.append(f"ℹ️ <b>Info:</b> {database_data['InfoLeak']}\n")
+                
+                if "NumOfResults" in database_data:
+                    text_lines.append(f"📈 <b>Results:</b> {database_data['NumOfResults']}\n")
+                
+                # Process Data field if it exists
+                if "Data" in database_data and isinstance(database_data["Data"], list):
+                    for idx, record in enumerate(database_data["Data"], 1):
+                        text_lines.append(f"<b>━━━ Record #{idx} ━━━</b>")
+                        
+                        if isinstance(record, dict):
+                            # Display all fields in the record
+                            for field_name, field_value in record.items():
+                                if isinstance(field_value, (dict, list)):
+                                    text_lines.append(f"• <b>{field_name}</b>:")
+                                    text_lines.extend(format_value(field_value, indent=1))
+                                else:
+                                    text_lines.append(f"• <b>{field_name}</b>: {field_value}")
+                        else:
+                            # If record is not a dict, just display it
+                            text_lines.extend(format_value(record, indent=1))
+                        
+                        text_lines.append("")
+                
+                # Process any other fields in database_data that aren't InfoLeak, NumOfResults, or Data
+                for key, value in database_data.items():
+                    if key not in ["InfoLeak", "NumOfResults", "Data"]:
+                        text_lines.append(f"<b>{key}</b>:")
+                        text_lines.extend(format_value(value, indent=1))
+                        text_lines.append("")
+            else:
+                # If database_data is not a dict, display it generically
+                text_lines.extend(format_value(database_data, indent=0))
             
             text = "\n".join(text_lines)
             
