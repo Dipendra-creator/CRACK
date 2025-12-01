@@ -502,6 +502,203 @@ def handle_search_query(message):
         # Fallback: send without HTML formatting
         logger.warning(f"HTML parse error: {e}")
         bot.send_message(
+"""• Use this tool responsibly and legally
+• Only search for legitimate purposes
+• Respect privacy and data protection laws
+• This bot is for educational/security research
+
+Need more help? Use /start to access the interactive menu!
+""",
+            parse_mode="HTML"
+        )
+    bot.reply_to(message, help_text, parse_mode="HTML")
+
+
+@bot.message_handler(commands=['stats'])
+def send_stats(message):
+    """Show bot statistics"""
+    stats_text = f"""
+📊 <b>Bot Statistics</b>
+
+🌐 API URL: <code>{LEAKOSINT_API_URL}</code>
+🔢 Default Search Limit: <b>{DEFAULT_LIMIT}</b> records
+🌍 Language: <b>{DEFAULT_LANG.upper()}</b>
+💾 Cached Reports: <b>{len(cached_reports)}</b>
+✅ Status: <b>Online & Ready</b>
+
+<i>Type any search query to begin searching.</i>
+"""
+    bot.reply_to(message, stats_text, parse_mode="HTML")
+
+
+@bot.message_handler(commands=['examples'])
+def send_examples(message):
+    """Show search examples"""
+    examples_text = """
+💡 <b>Search Examples</b>
+
+Here are some example queries you can try:
+
+<b>📧 Email Search:</b>
+• <code>john.doe@gmail.com</code>
+• <code>example@yahoo.com</code>
+• <code>user123@outlook.com</code>
+
+<b>👤 Username Search:</b>
+• <code>john_doe</code>
+• <code>admin123</code>
+• <code>user_2024</code>
+
+<b>📱 Phone Number Search:</b>
+• <code>+1234567890</code>
+• <code>555-123-4567</code>
+• <code>+44 20 1234 5678</code>
+
+<b>🏷️ Name Search:</b>
+• <code>John Smith</code>
+• <code>Jane Doe</code>
+• <code>Robert Johnson</code>
+
+<i>Just copy any example and send it to me, or create your own query!</i>
+"""
+    bot.reply_to(message, examples_text, parse_mode="HTML")
+
+
+@bot.message_handler(commands=['about'])
+def send_about(message):
+    """Show about information"""
+    about_text = """
+ℹ️ <b>About Leakosint Bot</b>
+
+<b>🤖 Bot Information:</b>
+This bot provides access to the Leakosint API, a powerful OSINT (Open Source Intelligence) tool for searching leaked databases.
+
+<b>🎯 Purpose:</b>
+• Security research and penetration testing
+• Checking if your data has been compromised
+• OSINT investigations
+• Educational purposes
+
+<b>🔧 Features:</b>
+✅ Multi-database search capability
+✅ Fast and accurate results
+✅ User-friendly interface
+✅ Paginated results navigation
+✅ Detailed breach information
+
+<b>⚖️ Legal Notice:</b>
+This bot is provided for legitimate security research and educational purposes only. Users are responsible for ensuring their use complies with applicable laws and regulations.
+
+<b>🔗 Powered by:</b>
+Leakosint API - Professional OSINT Database
+
+<i>For support or questions, use /help</i>
+"""
+    bot.reply_to(message, about_text, parse_mode="HTML")
+
+
+@bot.message_handler(commands=['privacy'])
+def send_privacy(message):
+    """Show privacy information"""
+    privacy_text = """
+🔒 <b>Privacy & Security</b>
+
+<b>🛡️ Your Privacy Matters:</b>
+
+<b>What we collect:</b>
+• Search queries (temporarily cached)
+• User ID (for authorization if enabled)
+• Basic interaction logs
+
+<b>What we DON'T collect:</b>
+❌ Personal conversations
+❌ Contact information
+❌ Location data
+❌ Device information
+
+<b>Data Retention:</b>
+• Search results are cached temporarily
+• Cache is cleared periodically
+• No long-term storage of queries
+
+<b>Security:</b>
+🔐 All API communications are encrypted
+🔐 No data is shared with third parties
+🔐 Bot operates on secure servers
+
+<b>Your Responsibility:</b>
+• Use the bot ethically and legally
+• Don't search for others without permission
+• Respect data protection regulations
+• Report any security concerns
+
+<i>This bot is designed with privacy in mind.</i>
+"""
+    bot.reply_to(message, privacy_text, parse_mode="HTML")
+
+
+@bot.message_handler(func=lambda message: True)
+def handle_search_query(message):
+    """Handle search queries"""
+    user_id = message.from_user.id
+    
+    # Check authorization
+    if not is_user_authorized(user_id):
+        bot.send_message(
+            message.chat.id,
+            "❌ You are not authorized to use this bot."
+        )
+        return
+    
+    # Only process text messages
+    if message.content_type != "text":
+        bot.send_message(
+            message.chat.id,
+            "⚠️ Please send a text query to search."
+        )
+        return
+    
+    # Generate unique query ID
+    query_id = randint(10000000, 99999999)
+    
+    # Send "searching" message
+    searching_msg = bot.send_message(
+        message.chat.id,
+        "🔎 Searching databases, please wait..."
+    )
+    
+    # Perform search
+    report_pages = generate_report(message.text, query_id)
+    
+    # Delete "searching" message
+    try:
+        bot.delete_message(message.chat.id, searching_msg.message_id)
+    except:
+        pass
+    
+    # Handle errors
+    if report_pages is None or len(report_pages) == 0:
+        bot.reply_to(
+            message,
+            "❌ <b>Search failed</b>\n\nThe API may be unavailable or there was an error processing your request.\n\n💡 Try:\n• Checking your query format\n• Using /examples for query ideas\n• Trying again in a few moments",
+            parse_mode="HTML"
+        )
+        return
+    
+    # Send first page
+    markup = create_navigation_keyboard(query_id, 0, len(report_pages))
+    
+    try:
+        bot.send_message(
+            message.chat.id,
+            report_pages[0],
+            parse_mode="HTML",
+            reply_markup=markup
+        )
+    except telebot.apihelper.ApiTelegramException as e:
+        # Fallback: send without HTML formatting
+        logger.warning(f"HTML parse error: {e}")
+        bot.send_message(
             message.chat.id,
             text=report_pages[0].replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", ""),
             reply_markup=markup
@@ -698,12 +895,11 @@ For legitimate use only
                 reply_markup=markup
             )
     
-    elif call.data == "page_info":
-        # Just answer the callback to remove loading state
-        bot.answer_callback_query(call.id, "Page indicator")
+            text=report_pages[0].replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", ""),
+            reply_markup=markup
+        
 
 
-```python
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callback(call: CallbackQuery):
     """Handle inline keyboard callbacks"""
@@ -914,12 +1110,19 @@ def main():
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b'Bot is running!')
+        
+        # Suppress log messages
+        def log_message(self, format, *args):
+            pass
 
     def start_server():
         port = int(os.environ.get("PORT", 8080))
-        server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
-        logger.info(f"Starting keep-alive server on port {port}")
-        server.serve_forever()
+        try:
+            server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+            logger.info(f"Starting keep-alive server on port {port}")
+            server.serve_forever()
+        except Exception as e:
+            logger.error(f"Failed to start keep-alive server: {e}")
 
     # Run server in a separate thread
     Thread(target=start_server, daemon=True).start()
@@ -937,4 +1140,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
