@@ -1,0 +1,436 @@
+=== FILE: .env ===
+# Telegram Bot Token (get from @BotFather)
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+
+# Leakosint API Configuration
+LEAKOSINT_API_URL=https://leakosintapi.com/
+
+# Admin User IDs (comma-separated, optional)
+# Example: ADMIN_USER_IDS=123456789,987654321
+ADMIN_USER_IDS=
+
+=== FILE: requirements.txt ===
+pyTelegramBotAPI==4.14.0
+requests==2.31.0
+python-dotenv==1.0.0
+
+=== FILE: .gitignore ===
+# Environment variables
+.env
+
+# User data
+user_tokens.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+=== FILE: Dockerfile ===
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application
+COPY bot.py .
+
+# Create volume for persistent data
+VOLUME ["/app/data"]
+
+# Run bot
+CMD ["python", "bot.py"]
+
+=== FILE: docker-compose.yml ===
+version: '3.8'
+
+services:
+  leakosint-bot:
+    build: .
+    container_name: leakosint-telegram-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./user_tokens.json:/app/user_tokens.json
+    environment:
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+=== FILE: deploy.sh ===
+#!/bin/bash
+
+echo "🚀 Leakosint Telegram Bot Deployment Script"
+echo "==========================================="
+
+# Check if .env exists
+if [ ! -f .env ]; then
+    echo "❌ .env file not found!"
+    echo "Creating .env from template..."
+    cat > .env << 'EOF'
+# Telegram Bot Token (get from @BotFather)
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+
+# Leakosint API Configuration
+LEAKOSINT_API_URL=https://leakosintapi.com/
+
+# Admin User IDs (comma-separated, optional)
+ADMIN_USER_IDS=
+EOF
+    echo "✅ .env file created. Please edit it with your bot token."
+    echo "Run: nano .env"
+    exit 1
+fi
+
+# Check if TELEGRAM_BOT_TOKEN is set
+source .env
+if [ "$TELEGRAM_BOT_TOKEN" = "your_bot_token_here" ] || [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+    echo "❌ Please set TELEGRAM_BOT_TOKEN in .env file"
+    echo "Run: nano .env"
+    exit 1
+fi
+
+# Create data directory
+mkdir -p data
+
+# Check deployment method
+echo ""
+echo "Select deployment method:"
+echo "1) Docker (Recommended)"
+echo "2) Direct Python"
+echo "3) Screen (Background Process)"
+echo "4) Systemd Service"
+read -p "Enter choice [1-4]: " choice
+
+case $choice in
+    1)
+        echo "🐳 Deploying with Docker..."
+        
+        # Check if Docker is installed
+        if ! command -v docker &> /dev/null; then
+            echo "❌ Docker not found. Installing Docker..."
+            curl -fsSL https://get.docker.com -o get-docker.sh
+            sh get-docker.sh
+            rm get-docker.sh
+        fi
+        
+        # Check if docker-compose is installed
+        if ! command -v docker-compose &> /dev/null; then
+            echo "Installing docker-compose..."
+            pip install docker-compose
+        fi
+        
+        # Build and run
+        docker-compose down
+        docker-compose build
+        docker-compose up -d
+        
+        echo "✅ Bot deployed with Docker!"
+        echo "View logs: docker-compose logs -f"
+        echo "Stop bot: docker-compose down"
+        ;;
+        
+    2)
+        echo "🐍 Deploying with Python..."
+        
+        # Install dependencies
+        pip install -r requirements.txt
+        
+        # Run bot
+        echo "Starting bot..."
+        python bot.py
+        ;;
+        
+    3)
+        echo "📺 Deploying with Screen..."
+        
+        # Check if screen is installed
+        if ! command -v screen &> /dev/null; then
+            echo "Installing screen..."
+            sudo apt-get update && sudo apt-get install -y screen
+        fi
+        
+        # Install dependencies
+        pip install -r requirements.txt
+        
+        # Kill existing session
+        screen -S leakosint-bot -X quit 2>/dev/null
+        
+        # Start new session
+        screen -dmS leakosint-bot python bot.py
+        
+        echo "✅ Bot running in screen session 'leakosint-bot'"
+        echo "Attach: screen -r leakosint-bot"
+        echo "Detach: Ctrl+A then D"
+        echo "Stop: screen -S leakosint-bot -X quit"
+        ;;
+        
+    4)
+        echo "⚙️  Creating systemd service..."
+        
+        # Install dependencies
+        pip install -r requirements.txt
+        
+        # Create service file
+        sudo tee /etc/systemd/system/leakosint-bot.service > /dev/null <<EOF
+[Unit]
+Description=Leakosint Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$(pwd)
+Environment="PATH=$PATH"
+EnvironmentFile=$(pwd)/.env
+ExecStart=$(which python) $(pwd)/bot.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        
+        # Reload systemd
+        sudo systemctl daemon-reload
+        sudo systemctl enable leakosint-bot
+        sudo systemctl start leakosint-bot
+        
+        echo "✅ Bot installed as systemd service!"
+        echo "Status: sudo systemctl status leakosint-bot"
+        echo "Logs: sudo journalctl -u leakosint-bot -f"
+        echo "Stop: sudo systemctl stop leakosint-bot"
+        echo "Restart: sudo systemctl restart leakosint-bot"
+        ;;
+        
+    *)
+        echo "❌ Invalid choice"
+        exit 1
+        ;;
+esac
+
+echo ""
+echo "==========================================="
+echo "✅ Deployment complete!"
+echo "🤖 Your bot should now be running"
+echo ""
+
+=== FILE: README.md ===
+# Leakosint Telegram Bot
+
+A Telegram bot that provides search functionality for the Leakosint API, allowing users to search leaked databases directly from Telegram.
+
+## Features
+
+- 🔐 **Per-user API Tokens** - Each user can set their own Leakosint API token
+- 🔍 **Search Functionality** - Search emails, names, phone numbers, and more
+- 📄 **Paginated Results** - Navigate through multiple results easily
+- 💾 **Persistent Storage** - Tokens are saved and persist across restarts
+- 🔒 **Secure** - Tokens are deleted from chat after input
+- 🎨 **Clean Interface** - Formatted output with emojis and inline keyboards
+
+## Quick Start
+
+### 1. Get Your Bot Token
+
+1. Message [@BotFather](https://t.me/BotFather) on Telegram
+2. Send `/newbot` and follow instructions
+3. Copy the bot token you receive
+
+### 2. Get Your Leakosint API Token
+
+1. Open your Leakosint bot
+2. Send `/API` command
+3. Copy your API token
+
+### 3. Deploy the Bot
+
+#### Option A: One-Command Deployment (Linux)
+
+```bash
+# Download and run deployment script
+curl -O https://your-repo/deploy.sh
+chmod +x deploy.sh
+./deploy.sh
+```
+
+#### Option B: Manual Setup
+
+```bash
+# Clone/download the files
+# Edit .env file
+nano .env
+
+# Add your bot token:
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the bot
+python bot.py
+```
+
+#### Option C: Docker Deployment
+
+```bash
+# Edit .env file first
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop bot
+docker-compose down
+```
+
+## Usage
+
+### For Users
+
+1. Start a chat with your bot
+2. Send `/start` to see the welcome message
+3. Send `/settoken` and paste your Leakosint API token
+4. Send any search query (email, name, phone, etc.)
+5. Navigate results using the Previous/Next buttons
+
+### Bot Commands
+
+- `/start` - Show welcome message
+- `/help` - Show help information
+- `/settoken` - Set your Leakosint API token
+- `/mytoken` - View your current token (masked)
+- `/removetoken` - Remove your API token
+- `/stats` - Show bot statistics
+
+## Deployment Methods
+
+### 1. Docker (Recommended)
+- Easiest to manage
+- Automatic restarts
+- Isolated environment
+
+### 2. Systemd Service
+- Runs as system service
+- Auto-starts on boot
+- Good for production
+
+### 3. Screen Session
+- Simple background process
+- Easy to attach/detach
+- Good for testing
+
+### 4. Direct Python
+- Development mode
+- Manual control
+- No persistence
+
+## Configuration
+
+### Environment Variables (.env)
+
+```env
+# Required
+TELEGRAM_BOT_TOKEN=your_bot_token_here
+
+# Optional
+LEAKOSINT_API_URL=https://leakosintapi.com/
+ADMIN_USER_IDS=123456789,987654321
+```
+
+### Admin Users
+
+Set `ADMIN_USER_IDS` in `.env` to restrict access (comma-separated Telegram user IDs). Leave empty to allow all users.
+
+## File Structure
+
+```
+.
+├── bot.py                 # Main bot application
+├── .env                   # Configuration (create this)
+├── requirements.txt       # Python dependencies
+├── docker-compose.yml     # Docker configuration
+├── Dockerfile            # Docker build file
+├── deploy.sh             # Deployment script
+├── user_tokens.json      # User tokens (auto-created)
+└── README.md             # This file
+```
+
+## Monitoring
+
+### Docker Logs
+```bash
+docker-compose logs -f
+```
+
+### Systemd Logs
+```bash
+sudo journalctl -u leakosint-bot -f
+```
+
+### Screen Session
+```bash
+screen -r leakosint-bot
+```
+
+## Troubleshooting
+
+### Bot not responding
+1. Check if bot is running: `docker-compose ps` or `sudo systemctl status leakosint-bot`
+2. Check logs for errors
+3. Verify bot token in `.env`
+4. Ensure API token is valid
+
+### API errors
+1. Verify Leakosint API token is correct
+2. Check if you have API credits remaining
+3. Try `/removetoken` and `/settoken` again
+
+### Permission errors
+1. Check file permissions: `chmod +x deploy.sh`
+2. Run with sudo if needed: `sudo docker-compose up -d`
+
+## Security Notes
+
+- ✅ User tokens are stored locally in `user_tokens.json`
+- ✅ Tokens are deleted from chat immediately after input
+- ✅ Tokens are masked when displayed
+- ⚠️ Keep `.env` file secure (never commit to git)
+- ⚠️ Keep `user_tokens.json` secure (contains user API tokens)
+
+## Support
+
+For issues or questions:
+1. Check the logs for error messages
+2. Verify all configuration is correct
+3. Ensure dependencies are installed
+4. Test with `/stats` command
+
+## License
+
+Use responsibly and only for legitimate purposes.
